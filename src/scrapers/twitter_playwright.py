@@ -1,7 +1,6 @@
 """Twitter scraper using Playwright + Cookie (replaces Apify)."""
 
 import asyncio
-import glob
 import hashlib
 import json
 import logging
@@ -9,7 +8,6 @@ import os
 import random
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
 
 from ..models import ContentItem, SourceType, TwitterConfig
 from .base import BaseScraper
@@ -68,7 +66,7 @@ class TwitterPlaywrightScraper(BaseScraper):
         super().__init__(config.model_dump(), http_client)
         self.twitter_config = config
 
-    async def fetch(self, since: datetime) -> List[ContentItem]:
+    async def fetch(self, since: datetime) -> list[ContentItem]:
         if not self.twitter_config.enabled:
             return []
 
@@ -87,7 +85,9 @@ class TwitterPlaywrightScraper(BaseScraper):
         pattern = self.twitter_config.cookie_file_pattern
         cookie_files = sorted(cookie_dir.glob(pattern))
         if not cookie_files:
-            logger.warning("No cookie files found matching %s in %s", pattern, cookie_dir)
+            logger.warning(
+                "No cookie files found matching %s in %s", pattern, cookie_dir
+            )
             return []
 
         logger.info(
@@ -96,7 +96,7 @@ class TwitterPlaywrightScraper(BaseScraper):
             len(cookie_files),
         )
 
-        all_items: List[ContentItem] = []
+        all_items: list[ContentItem] = []
         failed_users: list[tuple[str, int]] = []
         lock = asyncio.Lock()
 
@@ -127,7 +127,11 @@ class TwitterPlaywrightScraper(BaseScraper):
             for i, ctx in enumerate(contexts):
                 page = await ctx.new_page()
                 try:
-                    await page.goto("https://x.com/home", wait_until="domcontentloaded", timeout=15000)
+                    await page.goto(
+                        "https://x.com/home",
+                        wait_until="domcontentloaded",
+                        timeout=15000,
+                    )
                     await asyncio.sleep(2)
                     logger.info("Cookie #%d warm-up done", i + 1)
                 except Exception as exc:
@@ -137,28 +141,40 @@ class TwitterPlaywrightScraper(BaseScraper):
 
             num_contexts = len(contexts)
 
-            async def process_queue(context_idx: int, queue: list[str], is_retry: bool = False):
+            async def process_queue(
+                context_idx: int, queue: list[str], is_retry: bool = False
+            ):
                 ctx = contexts[context_idx]
                 consecutive_failures = 0
 
                 for username in queue:
                     wait_time = (
-                        random.uniform(5.0, 10.0) if not is_retry else random.uniform(10.0, 20.0)
+                        random.uniform(5.0, 10.0)
+                        if not is_retry
+                        else random.uniform(10.0, 20.0)
                     )
                     await asyncio.sleep(wait_time)
 
                     if consecutive_failures >= 5:
-                        logger.warning("Context #%d cooling down (30s)", context_idx + 1)
+                        logger.warning(
+                            "Context #%d cooling down (30s)", context_idx + 1
+                        )
                         await asyncio.sleep(30)
                         consecutive_failures = 0
 
-                    logger.info("Scraping @%s with cookie #%d...", username, context_idx + 1)
+                    logger.info(
+                        "Scraping @%s with cookie #%d...", username, context_idx + 1
+                    )
                     tweets = await self._scrape_user(ctx, username, since)
 
                     if tweets is not None:
                         logger.info("  -> @%s: %d tweets found", username, len(tweets))
                         consecutive_failures = 0
-                        parsed = [item for item in (self._parse_tweet(t, username) for t in tweets) if item]
+                        parsed = [
+                            item
+                            for item in (self._parse_tweet(t, username) for t in tweets)
+                            if item
+                        ]
                         async with lock:
                             all_items.extend(parsed)
                     else:
@@ -177,18 +193,25 @@ class TwitterPlaywrightScraper(BaseScraper):
 
             # Retry failed users with a different context
             if failed_users:
-                logger.info("Retrying %d failed Twitter accounts with alternate cookies", len(failed_users))
+                logger.info(
+                    "Retrying %d failed Twitter accounts with alternate cookies",
+                    len(failed_users),
+                )
                 await asyncio.sleep(20)
                 retry_queues: list[list[str]] = [[] for _ in range(num_contexts)]
                 for username, original_idx in failed_users:
-                    new_idx = (original_idx + 1) % num_contexts if num_contexts >= 2 else 0
+                    new_idx = (
+                        (original_idx + 1) % num_contexts if num_contexts >= 2 else 0
+                    )
                     retry_queues[new_idx].append(username)
 
-                await asyncio.gather(*[
-                    process_queue(i, q, is_retry=True)
-                    for i, q in enumerate(retry_queues)
-                    if q
-                ])
+                await asyncio.gather(
+                    *[
+                        process_queue(i, q, is_retry=True)
+                        for i, q in enumerate(retry_queues)
+                        if q
+                    ]
+                )
 
             for ctx in contexts:
                 await ctx.close()
@@ -197,13 +220,20 @@ class TwitterPlaywrightScraper(BaseScraper):
         logger.info("Fetched %d tweets via Playwright.", len(all_items))
         return all_items
 
-    async def _scrape_user(self, ctx, username: str, since: datetime) -> Optional[list[dict]]:
+    async def _scrape_user(
+        self, ctx, username: str, since: datetime
+    ) -> list[dict] | None:
         """Scrape a single user's tweets via GraphQL interception."""
         page = await ctx.new_page()
         graphql_tweets: list[dict] = []
 
         async def handle_response(response):
-            if "UserTweets" not in response.url and "UserByScreenName" not in response.url:
+            # X renames timeline GraphQL queries over time; match current and
+            # legacy names so tweet extraction survives renames.
+            if not any(
+                q in response.url
+                for q in ("UserTweets", "UserByScreenName", "UserOriginalsTimeline")
+            ):
                 return
             try:
                 data = await response.json()
@@ -212,10 +242,9 @@ class TwitterPlaywrightScraper(BaseScraper):
                     if isinstance(obj, dict):
                         if obj.get("rest_id") and obj.get("legacy"):
                             legacy = obj["legacy"]
-                            media_entities = (
-                                legacy.get("extended_entities", {}).get("media", [])
-                                or legacy.get("entities", {}).get("media", [])
-                            )
+                            media_entities = legacy.get("extended_entities", {}).get(
+                                "media", []
+                            ) or legacy.get("entities", {}).get("media", [])
                             images = [
                                 m["media_url_https"]
                                 for m in media_entities
@@ -232,7 +261,9 @@ class TwitterPlaywrightScraper(BaseScraper):
                                 "images": images,
                             }
                             try:
-                                dt = datetime.strptime(tweet["datetime_raw"], "%a %b %d %H:%M:%S %z %Y")
+                                dt = datetime.strptime(
+                                    tweet["datetime_raw"], "%a %b %d %H:%M:%S %z %Y"
+                                )
                                 tweet["datetime"] = dt.isoformat()
                             except (ValueError, TypeError):
                                 tweet["datetime"] = tweet["datetime_raw"]
@@ -255,7 +286,10 @@ class TwitterPlaywrightScraper(BaseScraper):
                 await route.abort()
             else:
                 url = route.request.url.lower()
-                if any(k in url for k in ("google-analytics", "doubleclick", "scribe.twitter.com")):
+                if any(
+                    k in url
+                    for k in ("google-analytics", "doubleclick", "scribe.twitter.com")
+                ):
                     await route.abort()
                 else:
                     await route.continue_()
@@ -283,22 +317,33 @@ class TwitterPlaywrightScraper(BaseScraper):
                     else:
                         if attempt == 2:
                             raise
-                        logger.debug("Page visit error (attempt %d/3): %s", attempt + 1, exc)
+                        logger.debug(
+                            "Page visit error (attempt %d/3): %s", attempt + 1, exc
+                        )
 
             await asyncio.sleep(5)
             start_time = asyncio.get_event_loop().time()
 
             # Quick diagnostic: check if page requires login
-            body_text = await page.evaluate("document.body ? document.body.innerText : ''")
-            if body_text and any(k in body_text.lower() for k in ("log in", "sign up", "create account")):
-                logger.warning("  -> @%s page shows login gate — cookie may be invalid", username)
+            body_text = await page.evaluate(
+                "document.body ? document.body.innerText : ''"
+            )
+            if body_text and any(
+                k in body_text.lower() for k in ("log in", "sign up", "create account")
+            ):
+                logger.warning(
+                    "  -> @%s page shows login gate — cookie may be invalid", username
+                )
 
             while (asyncio.get_event_loop().time() - start_time) < 60:
                 if graphql_tweets:
                     result = []
                     seen = set()
                     for t in graphql_tweets:
-                        uid = t.get("tweet_id") or hashlib.md5(t["text"].encode()).hexdigest()
+                        uid = (
+                            t.get("tweet_id")
+                            or hashlib.md5(t["text"].encode()).hexdigest()
+                        )
                         if uid in seen:
                             continue
                         seen.add(uid)
@@ -311,13 +356,23 @@ class TwitterPlaywrightScraper(BaseScraper):
                         result.append(t)
 
                     if result:
-                        logger.info("  -> @%s: %d tweets within time window", username, len(result))
+                        logger.info(
+                            "  -> @%s: %d tweets within time window",
+                            username,
+                            len(result),
+                        )
                         return result[: self.twitter_config.fetch_limit]
-                    logger.info("  -> @%s: intercepted %d tweets but all outside time window", username, len(graphql_tweets))
+                    logger.info(
+                        "  -> @%s: intercepted %d tweets but all outside time window",
+                        username,
+                        len(graphql_tweets),
+                    )
                     return []
 
                 # Check for error pages
-                body_text = await page.evaluate("document.body ? document.body.innerText : ''")
+                body_text = await page.evaluate(
+                    "document.body ? document.body.innerText : ''"
+                )
                 if body_text and any(
                     kw in body_text
                     for kw in ("Retry", "Something went wrong", "出错了", "重新加载")
@@ -326,7 +381,9 @@ class TwitterPlaywrightScraper(BaseScraper):
                     await asyncio.sleep(5)
 
                 # Simulate human browsing
-                await page.mouse.move(random.randint(100, 600), random.randint(100, 600))
+                await page.mouse.move(
+                    random.randint(100, 600), random.randint(100, 600)
+                )
                 await page.evaluate(f"window.scrollBy(0, {random.randint(300, 700)})")
                 await asyncio.sleep(random.uniform(2, 4))
 
@@ -337,7 +394,10 @@ class TwitterPlaywrightScraper(BaseScraper):
                     break
 
             if not graphql_tweets:
-                logger.warning("  -> @%s: no GraphQL data intercepted (cookie or page issue)", username)
+                logger.warning(
+                    "  -> @%s: no GraphQL data intercepted (cookie or page issue)",
+                    username,
+                )
                 return None
             return []
 
@@ -347,7 +407,7 @@ class TwitterPlaywrightScraper(BaseScraper):
         finally:
             await page.close()
 
-    def _parse_tweet(self, tweet: dict, username: str) -> Optional[ContentItem]:
+    def _parse_tweet(self, tweet: dict, username: str) -> ContentItem | None:
         """Convert raw tweet dict to Horizon ContentItem."""
         try:
             tweet_id = str(tweet.get("tweet_id", ""))
