@@ -1,0 +1,54 @@
+$schema: "@gobing-ai/spur/schemas/rule-file.schema.json"
+# UI import + class-leak boundary rules — keep `apps/web/src/ui.ts` the single UI
+# import seam and keep daisyUI component classes confined to `components/ui/`.
+# Both rules are `error` (promoted from warning in Task 0104) and wired into the
+# recommended-pre-check preset, so regressions are blocked at the standing gate.
+# Two distinct seams: `ui.ts` is the single IMPORT seam (Rule A); `components/ui/`
+# is the single daisyUI-CLASS-authoring seam (Rule B) — a re-export barrel cannot
+# hold a className, so Rule B alone keeps the `components/ui/**` exclude.
+# Evaluators proven in boundary/dao-boundary.yaml.
+rules:
+  - id: ui-import-seam-only
+    description: >
+      Third-party UI libraries (daisyui, @uiw/react-md-editor, future UI libs)
+      may only be imported through the `apps/web/src/ui.ts` seam. Everything else
+      in apps/web — including the wrappers under `components/ui/` — imports from
+      `@/ui`, never the raw library. `ui.ts` is the single UI import point.
+    severity: error
+    evaluator:
+      type: forbidden-import
+      config:
+        forbidden:
+          - specifier: "daisyui"
+          - specifier: "@uiw/react-md-editor"
+        scope:
+          include:
+            - "apps/web/src/**/*.ts"
+            - "apps/web/src/**/*.tsx"
+          exclude:
+            - "apps/web/src/ui.ts"
+            - "**/tests/**"
+            - "**/node_modules/**"
+
+  - id: no-daisyui-class-leak
+    description: >
+      daisyUI COMPONENT classes (btn, card, badge, modal, ...) must not appear in
+      className strings outside `apps/web/src/components/ui/`. Layout/utility classes
+      (flex, grid, gap-*, p-*, select-none, [user-select:none]) are unaffected -
+      the pattern is anchored to a className context and word-bounded to the
+      component-class allowlist only. `select` is matched as a standalone class
+      token (followed by whitespace or quote) to avoid colliding with Tailwind's
+      `select-*` utilities and CSS `user-select` property. `components/ui/` stays
+      excluded: it is the sanctioned class-authoring site.
+    severity: error
+    evaluator:
+      type: rg
+      config:
+        pattern: "className=[\"'][^\"']*\\b(btn|card|badge|modal|menu|navbar|drawer|tabs|alert|dropdown|collapse|join|tooltip|loading|checkbox|toggle)\\b|className=[\"'][^\"']*\\bselect[\\s\"']"
+    include:
+      - "apps/web/src/**/*.tsx"
+    exclude:
+      - "apps/web/src/components/ui/**"
+      - "apps/web/src/ui.ts"
+      - "**/tests/**"
+      - "**/node_modules/**"

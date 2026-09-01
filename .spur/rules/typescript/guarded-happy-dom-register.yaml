@@ -1,0 +1,42 @@
+$schema: "@gobing-ai/spur/schemas/rule-file.schema.json"
+# Forbid raw GlobalRegistrator.register() in web tests — use the shared helper.
+#
+# WHY: GlobalRegistrator.register() sets up happy-dom globals (window, document,
+# etc.). In a full bun test suite, multiple test files call it. The first call
+# succeeds; subsequent calls throw "Happy DOM has already been globally
+# registered" and the error kills the test file (4 test files × ~13 tests each
+# = 52 tests lost). This only surfaces when ALL tests run together (CI, or
+# `bun test ./apps/web/`), not when a single file runs in isolation.
+# Real incident: 52 CI-only failures across 4 test files, 2026-07-09.
+#
+# FIX: call `registerHappyDom()` from apps/web/tests/happy-dom.ts, which wraps
+# the register() in try/catch internally. It is the sanctioned caller and the
+# single exclude below. The teardown side is symmetric: `teardownHappyDom` is
+# the only sanctioned unregister() caller (see happy-dom-teardown.yaml).
+#
+# Severity warning: the file may pass in isolation but will fail in the full
+# suite; fix before merge.
+include:
+  - "apps/web/tests/**/*.test.ts"
+  - "apps/web/tests/**/*.test.tsx"
+exclude:
+  - "**/node_modules/**"
+  - "**/dist/**"
+  # The shared helper is the one legitimate caller of register().
+  - "apps/web/tests/happy-dom.ts"
+
+rules:
+  - id: guarded-happy-dom-register
+    description: >
+      Do not call `GlobalRegistrator.register()` directly in a web test — a
+      second caller in the same suite throws "already been globally registered"
+      and loses every test in that file (a CI-only failure that never reproduces
+      in isolation). Use `registerHappyDom()` from apps/web/tests/happy-dom.ts,
+      which guards the call; it is the single sanctioned register() caller.
+      52-real CI incidents, 2026-07-09.
+    severity: warning
+    evaluator:
+      type: rg
+      config:
+        # Match the raw call anywhere; the helper is excluded by path.
+        pattern: "GlobalRegistrator\\.register\\(\\)"

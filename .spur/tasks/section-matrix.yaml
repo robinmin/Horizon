@@ -1,0 +1,185 @@
+# Section-Status-Matrix: which sections are required/optional/forbidden per task status.
+# Design §3.2 — the SOLE semantic authority for task section layout (F92 R1):
+#   * VALIDATION (`spur task check`, incl. target-aware `--as <status>` lifecycle guard)
+#   * CREATION (`spur task create` / `spur task batch-create` -> `buildTaskSkeleton`)
+# There is NO hand-maintained creation or matrix fallback — packaged/compiled
+# execution loads data copied/generated from THIS canonical file and fails loudly
+# if no asset is reachable. Template files supply section BODY content + guidance
+# only; they never own the heading list (which comes from this matrix).
+#
+# Each VARIANT (the unified template axis — TASK_VARIANTS) maps status →
+# { required, optional, forbidden } section lists. Sections reference the canonical
+# section vocabulary (§2.1). `gate: true` on a status makes L2 violations hard errors.
+#
+# The variant is selected by a task's `template:` frontmatter (default: `standard`).
+$schema: "@gobing-ai/spur/schemas/section-matrix.schema.json"
+
+variants:
+  # Workhorse general-purpose task.
+  standard:
+    backlog:
+      required: [Background]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Plan, Solution, Testing, Review]
+    # todo = "ready to execute" (§2.3): fully specified and HITL-reviewable.
+    # Templates intentionally carry the full lifecycle scaffold; required lists
+    # express readiness, while optional lists tolerate empty future-stage placeholders.
+    todo:
+      required: [Background, Acceptance Criteria, Design, Plan]
+      optional: [Q&A, Requirements, Solution, Testing, Review]
+    wip:
+      required: [Background, Acceptance Criteria, Design, Plan]
+      optional: [Q&A, Requirements, Solution, Testing, Review]
+    testing:
+      required: [Solution, Testing]
+      optional: [Background, Requirements, Acceptance Criteria, Q&A, Design, Plan, Review]
+    # done REQUIRES the evidence trio (Solution/Testing/Review). The spec sections
+    # a task was built from (Design/Plan/AC/…) are OPTIONAL, not forbidden, so a
+    # finished task keeps its design history rather than being stripped to pass the
+    # closed-world gate. gate:true still hard-fails a missing required section.
+    done:
+      required: [Solution, Testing, Review]
+      optional: [Background, Requirements, Acceptance Criteria, Q&A, Design, Plan]
+      gate: true
+    blocked:
+      required: [Background]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Plan, Solution, Testing, Review]
+    cancelled:
+      required: []
+      optional: [Background, Requirements, Acceptance Criteria, Q&A, Design, Plan, Solution, Testing, Review]
+
+  # Feature implementation — AC pre-seeded from the linked feature's scenarios.
+  feature-impl:
+    backlog:
+      required: [Background]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Plan, Solution, Testing, Review]
+    todo:
+      required: [Background, Acceptance Criteria, Design, Plan]
+      optional: [Q&A, Requirements, Solution, Testing, Review]
+    wip:
+      required: [Background, Acceptance Criteria, Design, Plan]
+      optional: [Q&A, Requirements, Solution, Testing, Review]
+    testing:
+      required: [Solution, Testing]
+      optional: [Background, Requirements, Acceptance Criteria, Q&A, Design, Plan, Review]
+    # done keeps the spec sections optional (see `standard` rationale above) so a
+    # finished feature-impl task retains its Design/Plan/AC history.
+    done:
+      required: [Solution, Testing, Review]
+      optional: [Background, Requirements, Acceptance Criteria, Q&A, Design, Plan]
+      gate: true
+    blocked:
+      required: [Background]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Plan, Solution, Testing, Review]
+    cancelled:
+      required: []
+      optional: [Background, Requirements, Acceptance Criteria, Q&A, Design, Plan, Solution, Testing, Review]
+
+  # Bug / issue report — repro in Background, verified Root Cause, then fix.
+  issue:
+    backlog:
+      required: [Background]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Plan, Root Cause, Solution, Testing, Review]
+    todo:
+      required: [Background, Root Cause, Plan]
+      optional: [Requirements, Acceptance Criteria, Design, Q&A, Solution, Testing, Review]
+    wip:
+      required: [Background, Root Cause, Plan]
+      optional: [Requirements, Acceptance Criteria, Design, Solution, Testing, Review, Q&A]
+    testing:
+      required: [Root Cause, Solution, Testing]
+      optional: [Background, Requirements, Acceptance Criteria, Q&A, Design, Plan, Review]
+    done:
+      required: [Root Cause, Solution, Testing, Review]
+      optional: [Background, Requirements, Acceptance Criteria, Q&A, Design, Plan]
+      gate: true
+    blocked:
+      required: [Background]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Plan, Root Cause, Solution, Testing, Review]
+    cancelled:
+      required: []
+      optional: [Background, Requirements, Acceptance Criteria, Q&A, Design, Plan, Root Cause, Solution, Testing, Review]
+
+  # Code-review result task — the deliverable is the P1–P4 findings table.
+  #
+  # The review template scaffolds Background (with #### Review Findings sub-section),
+  # Plan (checklist), and Review (forward reference for post-implementation reflection).
+  # Plan and Review are optional at backlog/todo so the template renders cleanly;
+  # Review becomes required at wip+.
+  #
+  # Requirements is optional from todo onward (the authoring stage where a refined
+  # review-findings task gains scoped requirements); Solution and Testing are optional
+  # at wip+ — none required, but tolerated so that a review-findings task that evolves
+  # into implementation work (the common dogfood follow-up path) can carry scoped
+  # requirements, a change-map, and coverage data without matrix violations.
+  # The required list guards the real deliverables; optional is permissive on purpose.
+  review:
+    backlog:
+      required: [Background]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Plan, Solution, Testing, Review]
+    todo:
+      required: [Background, Plan]
+      optional: [Q&A, Requirements, Acceptance Criteria, Design, Solution, Testing, Review]
+    wip:
+      required: [Background, Review]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Plan, Solution, Testing]
+    testing:
+      required: [Background, Review]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Plan, Solution, Testing]
+    done:
+      required: [Background, Review]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Plan, Solution, Testing]
+      gate: true
+    blocked:
+      required: [Background]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Plan, Solution, Testing, Review]
+    cancelled:
+      required: []
+      optional: [Background, Requirements, Acceptance Criteria, Q&A, Design, Plan, Solution, Testing, Review]
+
+  # Process / docs / chore — same scaffold, lighter required gates.
+  meta:
+    backlog:
+      required: [Background]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Plan, Root Cause, Solution, Testing, Review]
+    todo:
+      required: [Background, Plan]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Root Cause, Solution, Testing, Review]
+    wip:
+      required: [Background, Plan]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Root Cause, Solution, Testing, Review]
+    testing:
+      required: [Background, Plan]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Root Cause, Solution, Testing, Review]
+    done:
+      required: [Background, Plan]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Root Cause, Solution, Testing, Review]
+    blocked:
+      required: [Background]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Plan, Root Cause, Solution, Testing, Review]
+    cancelled:
+      required: []
+      optional: [Background, Requirements, Acceptance Criteria, Q&A, Design, Plan, Root Cause, Solution, Testing, Review]
+
+  # Brainstorm template (minimal idea capture).
+  brainstorm:
+    backlog:
+      required: [Background]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Plan, Solution, Testing, Review]
+    todo:
+      required: [Background]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Plan, Solution, Testing, Review]
+    wip:
+      required: [Background, Plan]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Solution, Testing, Review]
+    testing:
+      required: [Background, Solution]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Plan, Testing, Review]
+    done:
+      required: [Background, Solution]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Plan, Testing, Review]
+    blocked:
+      required: [Background]
+      optional: [Requirements, Acceptance Criteria, Q&A, Design, Plan, Solution, Testing, Review]
+    cancelled:
+      required: []
+      optional: [Background, Requirements, Acceptance Criteria, Q&A, Design, Plan, Solution, Testing, Review]

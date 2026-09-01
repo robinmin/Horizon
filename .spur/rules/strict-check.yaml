@@ -1,0 +1,19 @@
+$schema: "@gobing-ai/spur/schemas/preset.schema.json"
+# Strict-check preset — explicit single-category cherry-pick of the `strict/`
+# category only. The same category is already included in recommended-pre-check
+# (extends: typescript, structure, boundary, surface, ui, strict) since 79186391;
+# use this preset when you want ONLY strict rules, not the full pre-check set.
+# Run explicitly:
+#   spur rule run --preset strict-check
+# or cherry-pick a single rule:
+#   spur rule run --rule no-third-party-http-clients
+#
+# `extends: [strict]` references the strict/ category directory (the preset file
+# is named differently to avoid a name↔category collision).
+name: strict-check
+description: >
+  Opt-in boundary hygiene: HTTP-client centralization, runtime fs/spawn seams,
+  and local rule-file structural validation. Included in recommended-pre-check;
+  this preset selects the strict/ category alone.
+extends:
+  - strict

@@ -62,3 +62,12 @@ logs/*.log
 todo.txt
 .ruff_cache
 .pytest_cache
+# Playwright profile for X cookie export
+.x_profile/
+
+# Spur indexed-context (machine-generated)
+.spur/context/
+
+# Spur local state (live db + local config; config.example.yaml is committed)
+.spur/spur.db*
+.spur/config.yaml
