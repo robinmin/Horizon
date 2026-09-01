@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -11,7 +10,7 @@ import pytest
 from anthropic import AsyncAnthropic
 
 from src.ai.client import AnthropicClient, OpenAIClient, create_ai_client
-from src.models import AIConfig, AIProvider, AI_PROVIDER_DEFAULTS
+from src.models import AI_PROVIDER_DEFAULTS, AIConfig, AIProvider
 
 
 def _make_config(**overrides) -> AIConfig:
@@ -51,7 +50,9 @@ class TestOpenAIClientInit:
         with pytest.raises(ValueError, match="Missing API key"):
             OpenAIClient(_make_config())
 
-    def test_rejects_literal_api_key_in_api_key_env_without_leaking_it(self, monkeypatch):
+    def test_rejects_literal_api_key_in_api_key_env_without_leaking_it(
+        self, monkeypatch
+    ):
         literal_key = "sk-test1234567890"
         monkeypatch.delenv(literal_key, raising=False)
 
@@ -77,9 +78,16 @@ class TestOpenAIClientInit:
         assert "MINIMAX_API_KEY" in message
 
     def test_uses_provider_default_base_url(self, monkeypatch):
+        monkeypatch.delenv("MINIMAX_BASE_URL", raising=False)
         monkeypatch.setenv("MINIMAX_API_KEY", "test-key")
         client = OpenAIClient(_make_config())
         assert str(client.client.base_url).rstrip("/").endswith("api.minimax.io/v1")
+
+    def test_minimax_uses_base_url_from_env(self, monkeypatch):
+        monkeypatch.setenv("MINIMAX_API_KEY", "test-key")
+        monkeypatch.setenv("MINIMAX_BASE_URL", "https://api.minimaxi.com/v1")
+        client = OpenAIClient(_make_config())
+        assert str(client.client.base_url).rstrip("/") == "https://api.minimaxi.com/v1"
 
     def test_uses_china_openai_compatible_base_url(self, monkeypatch):
         monkeypatch.setenv("MINIMAX_API_KEY", "test-key")
@@ -88,10 +96,12 @@ class TestOpenAIClientInit:
 
     def test_uses_default_base_url_for_ali(self, monkeypatch):
         monkeypatch.setenv("ALI_API_KEY", "test-key")
-        client = OpenAIClient(_make_config(
-            provider=AIProvider.ALI,
-            api_key_env="ALI_API_KEY",
-        ))
+        client = OpenAIClient(
+            _make_config(
+                provider=AIProvider.ALI,
+                api_key_env="ALI_API_KEY",
+            )
+        )
         assert "dashscope.aliyuncs.com" in str(client.client.base_url)
 
     def test_ollama_uses_localhost_default_base_url(self, monkeypatch):
@@ -113,7 +123,9 @@ class TestOpenAIClientInit:
     def test_ollama_does_not_duplicate_v1_in_custom_base_url(self, monkeypatch):
         monkeypatch.delenv("HORIZON_OLLAMA_BASE_URL", raising=False)
 
-        client = OpenAIClient(_make_ollama_config(base_url="https://ollama.example/v1/"))
+        client = OpenAIClient(
+            _make_ollama_config(base_url="https://ollama.example/v1/")
+        )
 
         assert str(client.client.base_url).rstrip("/") == "https://ollama.example/v1"
 
@@ -122,7 +134,9 @@ class TestOpenAIClientInit:
 
         client = OpenAIClient(_make_ollama_config())
 
-        assert str(client.client.base_url).rstrip("/") == "http://ollama.internal:11434/v1"
+        assert (
+            str(client.client.base_url).rstrip("/") == "http://ollama.internal:11434/v1"
+        )
 
     def test_ollama_config_base_url_overrides_env(self, monkeypatch):
         monkeypatch.setenv("HORIZON_OLLAMA_BASE_URL", "http://env-host:11434")
@@ -185,10 +199,12 @@ class TestOpenAIClientComplete:
 
     def test_response_format_present_for_openai(self, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-        client = OpenAIClient(_make_config(
-            provider=AIProvider.OPENAI,
-            api_key_env="OPENAI_API_KEY",
-        ))
+        client = OpenAIClient(
+            _make_config(
+                provider=AIProvider.OPENAI,
+                api_key_env="OPENAI_API_KEY",
+            )
+        )
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -224,10 +240,12 @@ class TestTemperatureFallback:
 
     def test_sends_temperature_by_default(self, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-        client = OpenAIClient(_make_config(
-            provider=AIProvider.OPENAI,
-            api_key_env="OPENAI_API_KEY",
-        ))
+        client = OpenAIClient(
+            _make_config(
+                provider=AIProvider.OPENAI,
+                api_key_env="OPENAI_API_KEY",
+            )
+        )
 
         with patch.object(
             client.client.chat.completions, "create", new_callable=AsyncMock
@@ -240,10 +258,12 @@ class TestTemperatureFallback:
 
     def test_retries_without_temperature_on_deprecated_error(self, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-        client = OpenAIClient(_make_config(
-            provider=AIProvider.OPENAI,
-            api_key_env="OPENAI_API_KEY",
-        ))
+        client = OpenAIClient(
+            _make_config(
+                provider=AIProvider.OPENAI,
+                api_key_env="OPENAI_API_KEY",
+            )
+        )
 
         first_error = Exception(
             "400 Bad Request: `temperature` is deprecated for this model."
@@ -264,10 +284,12 @@ class TestTemperatureFallback:
 
     def test_does_not_retry_for_unrelated_error(self, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-        client = OpenAIClient(_make_config(
-            provider=AIProvider.OPENAI,
-            api_key_env="OPENAI_API_KEY",
-        ))
+        client = OpenAIClient(
+            _make_config(
+                provider=AIProvider.OPENAI,
+                api_key_env="OPENAI_API_KEY",
+            )
+        )
 
         boom = Exception("500 Internal Server Error")
         with patch.object(
@@ -282,10 +304,12 @@ class TestTemperatureFallback:
 
     def test_subsequent_calls_skip_temperature_after_fallback(self, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-        client = OpenAIClient(_make_config(
-            provider=AIProvider.OPENAI,
-            api_key_env="OPENAI_API_KEY",
-        ))
+        client = OpenAIClient(
+            _make_config(
+                provider=AIProvider.OPENAI,
+                api_key_env="OPENAI_API_KEY",
+            )
+        )
 
         client._supports_temperature = False
         with patch.object(
@@ -297,19 +321,22 @@ class TestTemperatureFallback:
         assert "temperature" not in mock_create.call_args[1]
         assert mock_create.call_count == 1
 
-    @pytest.mark.parametrize("msg", [
-        "`temperature` is deprecated for this model",
-        "The model does not support temperature parameter",
-        "Unsupported parameter: temperature",
-    ])
-    def test_detects_various_temperature_error_messages(
-        self, monkeypatch, msg
-    ):
+    @pytest.mark.parametrize(
+        "msg",
+        [
+            "`temperature` is deprecated for this model",
+            "The model does not support temperature parameter",
+            "Unsupported parameter: temperature",
+        ],
+    )
+    def test_detects_various_temperature_error_messages(self, monkeypatch, msg):
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-        client = OpenAIClient(_make_config(
-            provider=AIProvider.OPENAI,
-            api_key_env="OPENAI_API_KEY",
-        ))
+        client = OpenAIClient(
+            _make_config(
+                provider=AIProvider.OPENAI,
+                api_key_env="OPENAI_API_KEY",
+            )
+        )
 
         with patch.object(
             client.client.chat.completions, "create", new_callable=AsyncMock
@@ -378,9 +405,7 @@ class TestFactoryFunction:
                     return await client.complete(system="test", user="hello")
 
         assert asyncio.run(run_request()) == "ok"
-        assert [str(request.url) for request in requests] == [
-            f"{base_url}/v1/messages"
-        ]
+        assert [str(request.url) for request in requests] == [f"{base_url}/v1/messages"]
 
     def test_creates_openai_client_for_deepseek(self, monkeypatch):
         monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")

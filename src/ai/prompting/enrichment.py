@@ -15,6 +15,13 @@ GROUNDING_RULES = f"""- Treat the source item as the primary account of what hap
 {EVIDENCE_RULES}
 - Cite only supplied tool result IDs, and only from the block that received those results."""
 
+# MiniMax (and some other reasoning models) occasionally emit raw ASCII
+# double quotes inside JSON string values, which makes the output invalid
+# JSON and fails the whole enrichment pass. State the constraint explicitly.
+JSON_OUTPUT_RULES = """- JSON string values must not contain raw ASCII double quotes (`"`).
+  For any quoted term inside content, use full-width quotes (\u201c\u201d or \u300c\u300d)
+  or single quotes instead."""
+
 
 def target_language_instruction(language: str) -> str:
     if language.lower() == "zh":
@@ -47,7 +54,9 @@ Return valid JSON only. Request no more than {MAX_TOOL_REQUESTS} calls:
   ]
 }}
 
-Return {{"tool_requests": []}} when the supplied content is sufficient."""
+Return {{"tool_requests": []}} when the supplied content is sufficient.
+
+{JSON_OUTPUT_RULES}"""
 
 
 def block_prompt(
@@ -93,7 +102,9 @@ Return valid JSON only:
   }}
 }}
 
-Source references must use exact result IDs such as `tool-1-1`, not request IDs such as `tool-1`. Do not use external information intended for another block."""
+Source references must use exact result IDs such as `tool-1-1`, not request IDs such as `tool-1`. Do not use external information intended for another block.
+
+{JSON_OUTPUT_RULES}"""
 
 
 def artifact_prompt(
@@ -102,8 +113,7 @@ def artifact_prompt(
     blocks: list[ProfileBlock],
 ) -> str:
     block_contract = "\n".join(
-        f"- `{block.id}`"
-        + (" optional" if block.optional else " required")
+        f"- `{block.id}`" + (" optional" if block.optional else " required")
         for block in blocks
     )
     return f"""{profile.enrichment_prompt}
@@ -134,7 +144,9 @@ Return valid JSON only:
   ]
 }}
 
-Do not emit unknown block IDs. Omit optional blocks when there is no useful content. No tool results are available, so every `source_refs` list must be empty."""
+Do not emit unknown block IDs. Omit optional blocks when there is no useful content. No tool results are available, so every `source_refs` list must be empty.
+
+{JSON_OUTPUT_RULES}"""
 
 
 def item_context(
@@ -162,7 +174,7 @@ Source: {item.source_type.value}
 Author: {item.author or "Unknown"}
 Analysis summary: {analysis.summary if analysis else ""}
 Analysis reason: {analysis.reason if analysis else ""}
-Tags: {', '.join(analysis.tags) if analysis else ""}
+Tags: {", ".join(analysis.tags) if analysis else ""}
 
 # Source content
 
